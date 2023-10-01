@@ -12,9 +12,9 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 
 
 class Answer(BaseModel):
-    answers_accepted: List[str]
-    answer_given: str
-    accepted_threshold: int
+    answersAccepted: List[str]
+    answersGiven: List[str]
+    acceptedThreshold: int
 
 
 origins = [
@@ -31,33 +31,40 @@ app.add_middleware(
 )
 
 
+class Score:
+    answer: str
+    score: int
+    result: str
+
+
 @app.post("/nlp/api/v1/check")
 def check_question(answer: Answer):
     response = []
-    embeddings_student = model.encode(answer.answer_given, convert_to_tensor=True)
 
-    scores = []
+    total_scores = []
 
-    for option in answer.answers_accepted:
-        embeddings_ans = model.encode(option, convert_to_tensor=True)
-        similarity_score = int(float(util.cos_sim(embeddings_ans, embeddings_student)[0][0]) * 10)
-        scores.append(similarity_score)
-    print(scores)
+    for answerObj in answer.answersGiven:
+        embeddings_student = model.encode(answerObj, convert_to_tensor=True)
+        scores = []
+        for option in answer.answersAccepted:
+            embeddings_ans = model.encode(option, convert_to_tensor=True)
+            similarity_score = int(float(util.cos_sim(embeddings_ans, embeddings_student)[0][0]) * 10)
+            if similarity_score >= answer.acceptedThreshold:
+                answer.answersAccepted.remove(option)
+            scores.append(similarity_score)
 
-    scores.sort(reverse=True)
-    print(scores)
-    highest_similarity_score = scores[0]
-    if highest_similarity_score >= answer.accepted_threshold:
-        result = "CORRECT"
-    else:
-        result = "INCORRECT"
-    response.append(
-        {
-            "score": str(highest_similarity_score),
-            "result": result
-        }
-    )
-    return {"response": response}
+        scores.sort(reverse=True)
+        print(scores)
+        score_obj = Score()
+        score_obj.score = scores[0]
+        if scores[0] >= answer.acceptedThreshold:
+            score_obj.result = "CORRECT"
+        else:
+            score_obj.result = "INCORRECT"
 
+        score_obj.answer = answerObj
+        total_scores.append(score_obj)
+
+    return {"response": total_scores}
 
 "uvicorn main:app --reload"
